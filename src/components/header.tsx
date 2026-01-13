@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { useModel } from "../contexts/modelContext";
 
 export default function Header({ isMinimized }: { isMinimized: boolean }) {
-  const [selectedModel, setSelectedModel] = useState("DeepSeek OCR");
+  const { selectedModel, setSelectedModel } = useModel();
   const [isOpen, setIsOpen] = useState(false);
 
-  const models = ["DeepSeek OCR", "Qwen3VL"];
+  const models = ["DeepSeek OCR", "Qwen3VL"] as const;
 
   return (
     <header className={`fixed top-0 right-0 py-3.5 px-12 bg-white text-black flex justify-between items-center z-40 border-b border-gray-200 transition-all duration-300 ${

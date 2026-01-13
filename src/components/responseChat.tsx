@@ -1,23 +1,21 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Plus, FileText, ChevronUp } from 'lucide-react';
+import { Send, Plus, FileText, ChevronUp, AlertCircle } from 'lucide-react';
 import { PromptType } from '../services/prompt.services';
-import { handleFileSelection, VALID_FILE_TYPES } from '../services/images.services';
-
-interface Message {
-  id: string;
-  type: 'user' | 'assistant';
-  content: string;
-  htmlContent?: string;
-  file?: {
-    name: string;
-    type: string;
-  };
-  timestamp: Date;
-}
+import { VALID_FILE_TYPES } from '../services/images.services';
+import { useModel } from '../contexts/modelContext';
+import {
+  Message,
+  processHtmlContent,
+  validateAndSelectFile,
+  createUserMessage,
+  createErrorMessage,
+  submitChatMessage,
+} from '../services/responseChat.services';
 
 export default function ChatBox() {
+  const { selectedModel } = useModel();
   const [selectedPrompt, setSelectedPrompt] = useState<PromptType>('Parse the figure.');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -35,15 +33,10 @@ export default function ChatBox() {
     scrollToBottom();
   }, [messages]);
 
-  const processHtmlContent = (html: string) => {
-    // Replace \n with <br> tags for proper line breaks
-    return html.replace(/\\n/g, '<br>').replace(/\n/g, '<br>');
-  };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     try {
-      const validatedFile = handleFileSelection(file);
+      const validatedFile = validateAndSelectFile(file);
       setSelectedFile(validatedFile);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Invalid file type');
@@ -54,71 +47,28 @@ export default function ChatBox() {
     e.preventDefault();
     if (!selectedFile) return;
 
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: selectedPrompt,
-      file: {
-        name: selectedFile.name,
-        type: selectedFile.type,
-      },
-      timestamp: new Date(),
-    };
+    // Check if Qwen3VL is selected
+    if (selectedModel === 'Qwen3VL') {
+      const errorMessage = createErrorMessage('Qwen3VL model is not available yet. Please select DeepSeek OCR instead.');
+      setMessages((prev) => [...prev, errorMessage]);
+      return;
+    }
 
+    // Create image preview URL
+    const imageUrl = URL.createObjectURL(selectedFile);
+
+    // Add user message
+    const userMessage = createUserMessage(selectedPrompt, selectedFile, imageUrl);
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
     try {
-      // Call Next.js API route (which proxies to Flask)
-      const formData = new FormData();
-      formData.append('prompt', `<image>\n${selectedPrompt}`);
-      formData.append('image', selectedFile);
-
-      const response = await fetch('/api/deepSeekOCR', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // Extract HTML content from response
-      let htmlContent = data.response;
-      
-      // If response contains {"html":"..."}, extract just the HTML
-      if (typeof htmlContent === 'string' && htmlContent.includes('{"html":"')) {
-        try {
-          const parsed = JSON.parse(htmlContent);
-          htmlContent = parsed.html;
-        } catch {
-          // If parsing fails, try regex extraction
-          const match = htmlContent.match(/\{"html":"(.*)"\}/);
-          if (match) {
-            htmlContent = match[1];
-          }
-        }
-      }
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: '',
-        htmlContent: htmlContent,
-        timestamp: new Date(),
-      };
-
+      const assistantMessage = await submitChatMessage(selectedModel, selectedPrompt, selectedFile);
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: `Error: ${error instanceof Error ? error.message : 'Failed to process request'}`,
-        timestamp: new Date(),
-      };
+      const errorMessage = createErrorMessage(
+        `Error: ${error instanceof Error ? error.message : 'Failed to process request'}`
+      );
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
@@ -142,10 +92,13 @@ export default function ChatBox() {
                   : 'bg-gray-100 text-gray-900'
               }`}
             >
-              {message.file && (
-                <div className="flex items-center gap-2 mb-2 text-sm opacity-80">
-                  <FileText className="w-4 h-4" />
-                  <span className="truncate">{message.file.name}</span>
+              {message.imageUrl && (
+                <div className="mb-3">
+                  <img 
+                    src={message.imageUrl} 
+                    alt={message.file?.name || 'Uploaded image'}
+                    className="rounded-lg max-w-full h-auto max-h-64 object-contain"
+                  />
                 </div>
               )}
               {message.htmlContent ? (
@@ -182,6 +135,12 @@ export default function ChatBox() {
 
       {/* Input Area */}
       <div className="p-4 border-t">
+        {selectedModel === 'Qwen3VL' && (
+          <div className="mb-3 flex items-center gap-2 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>Qwen3VL model is not available yet. Please select DeepSeek OCR from the header.</span>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="bg-white border border-gray-300 rounded-lg shadow-sm">
           {selectedFile && (
             <div className="px-4 pt-3 pb-2 border-b border-gray-200">
@@ -241,7 +200,7 @@ export default function ChatBox() {
                         setSelectedPrompt(prompt);
                         setIsOpen(false);
                       }}
-                      className={`w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors first:rounded-t-lg last:rounded-b-lg text-sm ${
+                      className={`w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 transition-colors first:rounded-t-lg last:rounded-b-lg text-sm ${
                         selectedPrompt === prompt ? "bg-gray-50 text-gray-600" : ""
                       }`}
                     >

@@ -1,0 +1,30 @@
+"use client";
+
+import { createContext, useContext, useState, ReactNode } from "react";
+
+type ModelType = "DeepSeek OCR" | "Qwen3VL";
+
+interface ModelContextType {
+  selectedModel: ModelType;
+  setSelectedModel: (model: ModelType) => void;
+}
+
+const ModelContext = createContext<ModelContextType | undefined>(undefined);
+
+export function ModelProvider({ children }: { children: ReactNode }) {
+  const [selectedModel, setSelectedModel] = useState<ModelType>("DeepSeek OCR");
+
+  return (
+    <ModelContext.Provider value={{ selectedModel, setSelectedModel }}>
+      {children}
+    </ModelContext.Provider>
+  );
+}
+
+export function useModel() {
+  const context = useContext(ModelContext);
+  if (context === undefined) {
+    throw new Error("useModel must be used within a ModelProvider");
+  }
+  return context;
+}

@@ -1,7 +1,8 @@
 "use client";
 
 import { ReactNode } from "react";
-import { SidebarProvider, useSidebar } from "../contexts/SidebarContext";
+import { SidebarProvider, useSidebar } from "../contexts/sidebarContext";
+import { ModelProvider } from "../contexts/modelContext";
 import Sidebar from "./sidebar";
 import Header from "./header";
 
@@ -26,7 +27,9 @@ function LayoutContent({ children }: { children: ReactNode }) {
 export default function LayoutWrapper({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
-      <LayoutContent>{children}</LayoutContent>
+      <ModelProvider>
+        <LayoutContent>{children}</LayoutContent>
+      </ModelProvider>
     </SidebarProvider>
   );
 }
