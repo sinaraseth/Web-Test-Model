@@ -158,7 +158,7 @@ export const processHtmlContent = (html: string): string => {
           }
         );
         
-        // Fix td tags - merge styles
+        // Fix td tags - merge style
         styledTable = styledTable.replace(
           /<td([^>]*)>/g,
           (match, attrs) => {
