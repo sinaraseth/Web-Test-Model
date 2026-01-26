@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, ReactNode } from "react";
 
-type ModelType = "DeepSeek OCR" | "Qwen3VL";
+type ModelType = "DeepSeek OCR" | "Qwen3VL" | "Paddle OCR";
 
 interface ModelContextType {
   selectedModel: ModelType;
@@ -12,7 +12,7 @@ interface ModelContextType {
 const ModelContext = createContext<ModelContextType | undefined>(undefined);
 
 export function ModelProvider({ children }: { children: ReactNode }) {
-  const [selectedModel, setSelectedModel] = useState<ModelType>("DeepSeek OCR");
+  const [selectedModel, setSelectedModel] = useState<ModelType>("Paddle OCR");
 
   return (
     <ModelContext.Provider value={{ selectedModel, setSelectedModel }}>

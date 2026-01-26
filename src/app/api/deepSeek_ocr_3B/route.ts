@@ -20,17 +20,23 @@ export async function POST(request: NextRequest) {
 
     console.log('Flask response status:', response.status);
 
+    const data = await response.json();
+    
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Flask error response:', errorText);
-      throw new Error(`Flask error! status: ${response.status}, message: ${errorText}`);
+      console.error('Flask error response:', data);
+      return NextResponse.json(
+        { 
+          error: data.error || 'Request failed',
+          details: data.details 
+        },
+        { status: response.status }
+      );
     }
 
-    // Flask returns HTML text, not JSON
-    const htmlContent = await response.text();
-    console.log('Flask response HTML length:', htmlContent.length);
+    console.log('Flask response data:', data);
     
-    return NextResponse.json({ response: htmlContent });
+    // Return the data as-is (preserves type, html, sql fields)
+    return NextResponse.json(data);
   } catch (error) {
     console.error('Error proxying chat message:', error);
     return NextResponse.json(

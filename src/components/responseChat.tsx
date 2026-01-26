@@ -21,12 +21,20 @@ export default function ChatBox() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [sqlToggles, setSqlToggles] = useState<{ [key: string]: boolean }>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const promptOptions: PromptType[] = ['Parse the figure.', 'Convert the document to markdown.', 'Describe the image to detail.', 'OCR the images.'];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const toggleSqlView = (messageId: string) => {
+    setSqlToggles(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId]
+    }));
   };
 
   useEffect(() => {
@@ -49,7 +57,7 @@ export default function ChatBox() {
 
     // Check if Qwen3VL is selected
     if (selectedModel === 'Qwen3VL') {
-      const errorMessage = createErrorMessage('Qwen3VL model is not available yet. Please select DeepSeek OCR instead.');
+      const errorMessage = createErrorMessage('Qwen3VL model is not available yet. Please select DeepSeek OCR or Paddle OCR instead.');
       setMessages((prev) => [...prev, errorMessage]);
       return;
     }
@@ -86,12 +94,28 @@ export default function ChatBox() {
             className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[70%] rounded-lg p-4 ${
+              className={`max-w-[70%] rounded-lg p-4 relative ${
                 message.type === 'user'
                   ? 'bg-black text-white'
                   : 'bg-gray-100 text-gray-900'
               }`}
             >
+              {message.sqlContent && (
+                <button
+                  onClick={() => toggleSqlView(message.id)}
+                  className="absolute bottom-3 right-4 inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-800 text-white text-xs rounded-md hover:bg-gray-700 transition-colors z-10"
+                >
+                  {sqlToggles[message.id] ? (
+                    <>
+                      <span>HTML</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>SQL</span>
+                    </>
+                  )}
+                </button>
+              )}
               {message.imageUrl && (
                 <div className="mb-3">
                   <img 
@@ -101,15 +125,21 @@ export default function ChatBox() {
                   />
                 </div>
               )}
-              {message.htmlContent ? (
-                <div 
-                  className="prose prose-sm max-w-none overflow-x-auto"
-                  dangerouslySetInnerHTML={{ __html: processHtmlContent(message.htmlContent) }}
-                  style={{
-                    wordBreak: 'break-word',
-                    whiteSpace: 'pre-wrap',
-                  }}
-                />
+              {message.htmlContent || message.sqlContent ? (
+                sqlToggles[message.id] && message.sqlContent ? (
+                  <pre className="bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto text-xs font-mono">
+                    <code>{message.sqlContent}</code>
+                  </pre>
+                ) : (
+                  <div 
+                    className="prose prose-sm max-w-none overflow-x-auto"
+                    dangerouslySetInnerHTML={{ __html: processHtmlContent(message.htmlContent || '') }}
+                    style={{
+                      wordBreak: 'break-word',
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  />
+                )
               ) : (
                 <p className="whitespace-pre-wrap">{message.content}</p>
               )}
@@ -138,7 +168,7 @@ export default function ChatBox() {
         {selectedModel === 'Qwen3VL' && (
           <div className="mb-3 flex items-center gap-2 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>Qwen3VL model is not available yet. Please select DeepSeek OCR from the header.</span>
+            <span>Qwen3VL model is not available yet. Please select DeepSeek OCR or Paddle OCR from the header.</span>
           </div>
         )}
         <form onSubmit={handleSubmit} className="bg-white border border-gray-300 rounded-lg shadow-sm">
@@ -222,6 +252,7 @@ export default function ChatBox() {
           </div>
         </form>
       </div>
+      <p className="text-center text-xs text-gray-500">By Techo Startup Center</p>
     </div>
   );
 }

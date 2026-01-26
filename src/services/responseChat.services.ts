@@ -6,6 +6,7 @@ export interface Message {
   type: 'user' | 'assistant';
   content: string;
   htmlContent?: string;
+  sqlContent?: string;
   file?: {
     name: string;
     type: string;
@@ -15,6 +16,182 @@ export interface Message {
 }
 
 export const processHtmlContent = (html: string): string => {
+  // Convert markdown tables to HTML tables
+  const convertMarkdownTable = (text: string): string => {
+    const lines = text.split('\n').filter(line => line.trim());
+    
+    // Check for pipe-delimited markdown tables (| col1 | col2 |)
+    const hasPipes = lines.some(line => line.trim().startsWith('|') && line.trim().endsWith('|'));
+    
+    if (hasPipes) {
+      // Find table start (first line with pipes)
+      const tableStartIndex = lines.findIndex(line => line.trim().startsWith('|') && line.trim().endsWith('|'));
+      
+      if (tableStartIndex >= 0) {
+        const beforeTable = lines.slice(0, tableStartIndex).join('<br>');
+        const tableLines = lines.slice(tableStartIndex).filter(line => line.trim().startsWith('|'));
+        
+        // Remove separator line (|---|---|)
+        const dataLines = tableLines.filter(line => !line.match(/^\|\s*[-:]+\s*\|/));
+        
+        if (dataLines.length > 0) {
+          const rows = dataLines.map(line => {
+            // Remove leading and trailing pipes, then split by pipe
+            return line.trim().slice(1, -1).split('|').map(cell => cell.trim());
+          });
+          
+          // Build HTML table
+          let tableHtml = "<table style='margin: 1em 0; width: max-content; border-collapse: collapse; border: 1px solid #ddd;'>\n";
+          
+          // First row is header
+          tableHtml += "  <thead><tr>";
+          rows[0].forEach(cell => {
+            tableHtml += `<th style='text-align: left; padding: 8px; border: 1px solid #ddd; background-color: #f5f5f5;'>${cell}</th>`;
+          });
+          tableHtml += "</tr></thead>\n";
+          
+          // Remaining rows are body
+          if (rows.length > 1) {
+            tableHtml += "  <tbody>\n";
+            for (let i = 1; i < rows.length; i++) {
+              tableHtml += "    <tr>";
+              rows[i].forEach(cell => {
+                tableHtml += `<td style='text-align: left; padding: 8px; border: 1px solid #ddd;'>${cell}</td>`;
+              });
+              tableHtml += "</tr>\n";
+            }
+            tableHtml += "  </tbody>\n";
+          }
+          tableHtml += "</table>";
+          
+          return (beforeTable ? beforeTable + '<br><br>' : '') + tableHtml;
+        }
+      }
+    }
+    
+    // Check for tab-separated or space-separated tables
+    const hasTabs = lines.some(line => line.includes('\t'));
+    const hasMultipleSpaces = lines.some(line => /\s{2,}/.test(line));
+    
+    if (lines.length >= 2 && (hasTabs || hasMultipleSpaces)) {
+      // Find table content (skip markdown headers ##)
+      const tableStartIndex = lines.findIndex(line => !line.trim().startsWith('#') && (line.includes('\t') || /\s{2,}/.test(line)));
+      
+      if (tableStartIndex >= 0) {
+        const beforeTable = lines.slice(0, tableStartIndex).join('<br>');
+        const tableLines = lines.slice(tableStartIndex);
+        
+        // Split by tabs or multiple spaces
+        const separator = hasTabs ? '\t' : /\s{2,}/;
+        const rows = tableLines.map(line => line.split(separator).map(cell => cell.trim()));
+        
+        // Build HTML table
+        let tableHtml = "<table style='margin: 1em 0; width: max-content; border-collapse: collapse; border: 1px solid #ddd;'>\n";
+        
+        if (rows.length > 0) {
+          // First row is header
+          tableHtml += "  <thead><tr>";
+          rows[0].forEach(cell => {
+            tableHtml += `<th style='text-align: left; padding: 8px; border: 1px solid #ddd; background-color: #f5f5f5;'>${cell}</th>`;
+          });
+          tableHtml += "</tr></thead>\n";
+          
+          // Remaining rows are body
+          if (rows.length > 1) {
+            tableHtml += "  <tbody>\n";
+            for (let i = 1; i < rows.length; i++) {
+              tableHtml += "    <tr>";
+              rows[i].forEach(cell => {
+                tableHtml += `<td style='text-align: left; padding: 8px; border: 1px solid #ddd;'>${cell}</td>`;
+              });
+              tableHtml += "</tr>\n";
+            }
+            tableHtml += "  </tbody>\n";
+          }
+        }
+        tableHtml += "</table>";
+        
+        return (beforeTable ? beforeTable + '<br><br>' : '') + tableHtml;
+      }
+    }
+    
+    return text;
+  };
+  
+  // If content contains HTML tables, handle mixed text+HTML content
+  if (html.includes('<table')) {
+    // Split by table tags to separate text from HTML
+    const parts = html.split(/(<table[\s\S]*?<\/table>)/g);
+    return parts.map(part => {
+      // If part is a table, enhance its styling
+      if (part.trim().startsWith('<table')) {
+        // Add proper border styling to table
+        let styledTable = part;
+        
+        // Fix table tag - ensure it has proper border styling
+        if (!styledTable.match(/<table[^>]*border/)) {
+          styledTable = styledTable.replace(
+            /<table([^>]*)>/,
+            (match, attrs) => {
+              const hasStyle = attrs.includes('style=');
+              if (hasStyle) {
+                return match.replace(/style='([^']*)'/, "style='$1 border-collapse: collapse; border: 1px solid #ddd;'");
+              } else {
+                return `<table${attrs} style='border-collapse: collapse; border: 1px solid #ddd;'>`;
+              }
+            }
+          );
+        }
+        
+        // Fix th tags - merge styles
+        styledTable = styledTable.replace(
+          /<th([^>]*)>/g,
+          (match, attrs) => {
+            const styleMatch = attrs.match(/style='([^']*)'/);
+            if (styleMatch) {
+              const existingStyles = styleMatch[1];
+              const newAttrs = attrs.replace(/style='[^']*'/, `style='${existingStyles} padding: 8px; border: 1px solid #ddd; background-color: #f5f5f5;'`);
+              return `<th${newAttrs}>`;
+            } else {
+              return `<th${attrs} style='padding: 8px; border: 1px solid #ddd; background-color: #f5f5f5;'>`;
+            }
+          }
+        );
+        
+        // Fix td tags - merge styles
+        styledTable = styledTable.replace(
+          /<td([^>]*)>/g,
+          (match, attrs) => {
+            const styleMatch = attrs.match(/style='([^']*)'/);
+            if (styleMatch) {
+              const existingStyles = styleMatch[1];
+              const newAttrs = attrs.replace(/style='[^']*'/, `style='${existingStyles} padding: 8px; border: 1px solid #ddd;'`);
+              return `<td${newAttrs}>`;
+            } else {
+              return `<td${attrs} style='padding: 8px; border: 1px solid #ddd;'>`;
+            }
+          }
+        );
+        
+        return styledTable;
+      }
+      // Otherwise, convert newlines to <br> for plain text parts
+      return part.replace(/\\n/g, '<br>').replace(/\n/g, '<br>');
+    }).join('');
+  }
+  
+  // Try to convert markdown tables to HTML
+  const converted = convertMarkdownTable(html);
+  if (converted !== html) {
+    return converted;
+  }
+  
+  // If content contains other HTML tags, return as-is
+  if (html.includes('<div') || html.includes('<p>')) {
+    return html;
+  }
+  
+  // Otherwise, convert newlines to <br> for plain text
   return html.replace(/\\n/g, '<br>').replace(/\n/g, '<br>');
 };
 
@@ -62,42 +239,92 @@ export const submitChatMessage = async (
 ): Promise<Message> => {
   // Check if Qwen3VL is selected
   if (selectedModel === 'Qwen3VL') {
-    throw new Error('Qwen3VL model is not available yet. Please select DeepSeek OCR instead.');
+    throw new Error('Qwen3VL model is not available yet. Please select DeepSeek OCR or Paddle OCR instead.');
   }
 
   try {
-    // Call Next.js API route (which proxies to Flask)
+    // Call Next.js API route
     const formData = new FormData();
     formData.append('prompt', `<image>\n${selectedPrompt}`);
     formData.append('image', selectedFile);
+    formData.append('output', 'html'); // Request HTML first
 
     // Select API endpoint based on model
-    const apiEndpoint = selectedModel === 'DeepSeek OCR' ? '/api/deepSeekOCR' : '/api/qwen3VL';
+    let apiEndpoint: string;
+    if (selectedModel === 'Paddle OCR') {
+      apiEndpoint = '/api/paddle_ocr_1B';
+    } else if (selectedModel === 'DeepSeek OCR') {
+      apiEndpoint = '/api/deepSeek_ocr_3B';
+    } else {
+      apiEndpoint = '/api/qwen3VL';
+    }
+    
     const response = await fetch(apiEndpoint, {
       method: 'POST',
       body: formData,
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
     const data = await response.json();
 
-    // Extract HTML content from response
-    let htmlContent = data.response;
-    
-    // If response contains {"html":"..."}, extract just the HTML
-    if (typeof htmlContent === 'string' && htmlContent.includes('{"html":"')) {
-      try {
-        const parsed = JSON.parse(htmlContent);
-        htmlContent = parsed.html;
-      } catch {
-        // If parsing fails, try regex extraction
-        const match = htmlContent.match(/\{"html":"(.*)"\}/);
-        if (match) {
-          htmlContent = match[1];
+    if (!response.ok) {
+      // Handle error response from backend
+      const errorMessage = data.error || 'Request failed';
+      const errorDetails = data.details ? `: ${data.details}` : '';
+      throw new Error(`${errorMessage}${errorDetails}`);
+    }
+
+    // Extract content from response based on type
+    let htmlContent = undefined;
+    let sqlContent = undefined;
+
+    // Handle new format with type field
+    if (data.type === 'html' && data.html) {
+      htmlContent = data.html;
+      // Check if SQL is also provided (Paddle OCR includes both)
+      if (data.sql) {
+        sqlContent = data.sql;
+      }
+    } else {
+      // Handle legacy format
+      htmlContent = data.response;
+      
+      // If response contains {"html":"..."}, extract just the HTML
+      if (typeof htmlContent === 'string' && htmlContent.includes('{"html":"')) {
+        try {
+          const parsed = JSON.parse(htmlContent);
+          htmlContent = parsed.html;
+        } catch {
+          // If parsing fails, try regex extraction
+          const match = htmlContent.match(/\{"html":"(.*)"\}/);
+          if (match) {
+            htmlContent = match[1];
+          }
         }
+      }
+    }
+
+    // Only request SQL separately if not already provided (for models other than Paddle OCR)
+    if (htmlContent && htmlContent.includes('<table') && !sqlContent) {
+      try {
+        const sqlFormData = new FormData();
+        sqlFormData.append('prompt', `<image>\n${selectedPrompt}`);
+        sqlFormData.append('image', selectedFile);
+        sqlFormData.append('output', 'sql'); // Request SQL format
+        
+        const sqlResponse = await fetch(apiEndpoint, {
+          method: 'POST',
+          body: sqlFormData,
+        });
+
+        if (sqlResponse.ok) {
+          const sqlData = await sqlResponse.json();
+          if (sqlData.type === 'sql' && sqlData.sql) {
+            sqlContent = sqlData.sql;
+          }
+        }
+      } catch (sqlError) {
+        // Silently fail if SQL request fails, we still have HTML
+        console.warn('Failed to fetch SQL format:', sqlError);
       }
     }
 
@@ -105,7 +332,8 @@ export const submitChatMessage = async (
       id: (Date.now() + 1).toString(),
       type: 'assistant',
       content: '',
-      htmlContent: htmlContent,
+      htmlContent,
+      sqlContent,
       timestamp: new Date(),
     };
   } catch (error) {
