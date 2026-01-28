@@ -5,6 +5,28 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
 const DEEPSEEK_MODEL = "deepseek-ocr:3b";
 const GEMMA_MODEL = "gemma3:4b";
+const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+// Fetch with timeout support
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    throw error;
+  }
+}
 
 async function callOllamaModel(model: string, prompt: string, base64Image: string) {
   const payload = {
@@ -14,7 +36,7 @@ async function callOllamaModel(model: string, prompt: string, base64Image: strin
     stream: false
   };
 
-  const response = await fetch(OLLAMA_API_URL, {
+  const response = await fetchWithTimeout(OLLAMA_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -38,7 +60,7 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     prompt: prompt,
     stream: false
   };
-  const response = await fetch(OLLAMA_API_URL, {
+  const response = await fetchWithTimeout(OLLAMA_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
