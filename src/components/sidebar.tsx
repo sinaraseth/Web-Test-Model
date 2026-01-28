@@ -1,6 +1,6 @@
 "use client";
 
-import { useSidebar } from "../contexts/sidebarContext";
+import { useSidebar } from "../contexts/SidebarContext";
 import {
   PanelLeftClose,
   PanelLeftOpen,
