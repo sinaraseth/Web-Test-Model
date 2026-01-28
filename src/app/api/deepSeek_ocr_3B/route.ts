@@ -13,10 +13,11 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     stream: false
   };
 
-  const response = await fetch(OLLAMA_URL, {
+  const response = await fetch(OLLAMA_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
     },
     body: JSON.stringify(payload),
   });
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
       },
       body: JSON.stringify(payload),
     });
