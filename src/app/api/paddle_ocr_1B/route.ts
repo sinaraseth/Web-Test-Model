@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Fast backend URL - using ngrok for public access from Google Colab
-const BASE_URL = "https://nelia-octachordal-sherril.ngrok-free.dev";
+// Ollama local instance
+const OLLAMA_URL = "http://localhost:11434/api/generate";
+const MODEL_NAME = "deepseek-ocr:3b";
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,49 +10,81 @@ export async function POST(request: NextRequest) {
     
     console.log('Received request with formData keys:', Array.from(formData.keys()));
     
-    // Forward the request to Fast backend /markdown/doclayout-extract endpoint
-    const response = await fetch(`${BASE_URL}/markdown/doclayout-extract`, {
+    // Extract image and prompt from formData
+    const imageFile = formData.get('image') as File;
+    const prompt = formData.get('prompt') as string;
+    const outputFormat = formData.get('output') as string || 'html';
+    
+    if (!imageFile) {
+      return NextResponse.json(
+        { error: 'No image file provided' },
+        { status: 400 }
+      );
+    }
+
+    // Convert image to base64
+    const arrayBuffer = await imageFile.arrayBuffer();
+    const base64Image = Buffer.from(arrayBuffer).toString('base64');
+
+    // Prepare payload for Ollama
+    const payload = {
+      model: MODEL_NAME,
+      prompt: prompt || "Parse the figure.",
+      images: [base64Image],
+      stream: false
+    };
+
+    console.log('Sending request to Ollama with prompt:', prompt);
+
+    // Send request to Ollama
+    const response = await fetch(OLLAMA_URL, {
       method: 'POST',
-      body: formData,
       headers: {
-        'ngrok-skip-browser-warning': 'true',
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify(payload),
     });
 
-    console.log('Fast response status:', response.status);
+    console.log('Ollama response status:', response.status);
 
-    const data = await response.json();
-    
     if (!response.ok) {
-      console.error('Fast error response:', data);
+      const errorText = await response.text();
+      console.error('Ollama error response:', errorText);
+      
+      // Check if Ollama is running
+      if (response.status === 404) {
+        return NextResponse.json(
+          { 
+            error: 'Ollama server not found',
+            details: 'Make sure Ollama is running on http://localhost:11434'
+          },
+          { status: 503 }
+        );
+      }
+      
       return NextResponse.json(
         { 
-          error: data.error || 'Request failed',
-          details: data.details 
+          error: 'Ollama request failed',
+          details: errorText
         },
         { status: response.status }
       );
     }
 
-    console.log('Fast response data:', data);
-    
-    // Transform Paddle OCR response format to match expected format
-    // Paddle returns: { result: [{ markdown: "...", sql: "..." }] }
-    // Expected format: { type: "html", html: "...", sql: "..." }
-    if (data.result && Array.isArray(data.result) && data.result.length > 0) {
-      const firstResult = data.result[0];
-      const transformedData = {
-        type: 'html',
-        html: firstResult.markdown || '',
-        sql: firstResult.sql || undefined
-      };
-      return NextResponse.json(transformedData);
-    }
-    
-    // Return the data as-is if format doesn't match
-    return NextResponse.json(data);
+    const data = await response.json();
+    console.log('Ollama response data:', data);
+
+    // Extract response from Ollama format
+    const modelResponse = data.response || '';
+
+    // Return in expected format
+    return NextResponse.json({
+      type: outputFormat,
+      html: modelResponse,
+      response: modelResponse, // Legacy format support
+    });
   } catch (error) {
-    console.error('Error proxying chat message:', error);
+    console.error('Error processing request:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to process request' },
       { status: 500 }

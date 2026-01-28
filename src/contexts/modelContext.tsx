@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, ReactNode } from "react";
 
-type ModelType = "DeepSeek OCR" | "Qwen3VL" | "Paddle OCR";
+type ModelType = "DeepSeek OCR" | "Qwen3VL" | "Paddle OCR" | "Gemma3" | "Hybrid (DeepSeek OCR + Gemma3)" | "Hybrid (Paddle OCR + Qwen3VL)";
 
 interface ModelContextType {
   selectedModel: ModelType;

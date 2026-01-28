@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import http from 'http';
 
 // Ollama local instance
 const OLLAMA_URL = "http://localhost:11434/api/generate";
-const MODEL_NAME = "deepseek-ocr:3b";
-const GEMMA_MODEL = "gemma3:4b";
+const MODEL_NAME = "gemma3:4b";
 
 async function callOllamaTextOnly(model: string, prompt: string) {
   const payload = {
@@ -29,6 +29,45 @@ async function callOllamaTextOnly(model: string, prompt: string) {
   return data.response || '';
 }
 
+async function fetchWithLongTimeout(url: string, options: any) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(options.body);
+    
+    const req = http.request(url, {
+      method: options.method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+      timeout: 900000, // 15 minutes
+    }, (res) => {
+      let responseData = '';
+      
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+      
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode === 200,
+          status: res.statusCode,
+          text: async () => responseData,
+          json: async () => JSON.parse(responseData),
+        });
+      });
+    });
+    
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+    
+    req.write(data);
+    req.end();
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -51,26 +90,31 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await imageFile.arrayBuffer();
     const base64Image = Buffer.from(arrayBuffer).toString('base64');
 
+    // Enhance prompt to ensure HTML output
+    const basePrompt = prompt || "Parse the figure.";
+    const actualPrompt = `${basePrompt}
+
+IMPORTANT: If the image contains a table or structured data, output it in proper HTML format using <table>, <tr>, <th>, and <td> tags. Do not use markdown. Provide only the HTML output without explanations or code fences.`;
+
     // Prepare payload for Ollama
     const payload = {
       model: MODEL_NAME,
-      prompt: prompt || "Parse the figure.",
+      prompt: actualPrompt,
       images: [base64Image],
       stream: false
     };
 
-    console.log('Sending request to Ollama with prompt:', prompt);
+    console.log('Sending request to Ollama with prompt:', actualPrompt);
+    console.log('Using model:', MODEL_NAME);
+    console.log('Image size:', base64Image.length, 'characters');
 
-    // Send request to Ollama
-    const response = await fetch(OLLAMA_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const response: any = await fetchWithLongTimeout(OLLAMA_URL, {
+        method: 'POST',
+        body: payload,
+      });
 
-    console.log('Ollama response status:', response.status);
+      console.log('Ollama response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -100,12 +144,26 @@ export async function POST(request: NextRequest) {
     console.log('Ollama response data:', data);
 
     // Extract response from Ollama format
-    const modelResponse = data.response || '';
+    let modelResponse = data.response || '';
+
+    // Strip markdown code fences if model returned HTML wrapped in ```html
+    if (modelResponse.includes('```')) {
+      const htmlCodeFenceMatch = modelResponse.match(/```html\s*([\s\S]*?)\s*```/);
+      if (htmlCodeFenceMatch) {
+        modelResponse = htmlCodeFenceMatch[1].trim();
+      } else {
+        // Check for generic ``` ... ``` pattern with HTML content
+        const genericCodeFenceMatch = modelResponse.match(/```\s*(<!DOCTYPE html[\s\S]*?<\/html>|<table[\s\S]*?<\/table>)\s*```/i);
+        if (genericCodeFenceMatch) {
+          modelResponse = genericCodeFenceMatch[1].trim();
+        }
+      }
+    }
 
     // Generate SQL from HTML if it contains tables
     let sqlOutput = undefined;
-    if (modelResponse.includes('<table') || modelResponse.toLowerCase().includes('table')) {
-      console.log('Table detected, generating SQL with Gemma3...');
+    if (modelResponse && (modelResponse.includes('<table') || modelResponse.toLowerCase().includes('table'))) {
+      console.log('Table detected, generating SQL (text-only)...');
       try {
         const sqlPrompt = `Convert the following HTML table to SQL CREATE TABLE and INSERT statements. 
 Extract the table structure and data, then generate:
@@ -117,7 +175,7 @@ ${modelResponse}
 
 Provide only the SQL code without any explanations, markdown formatting, or code fences. Start with CREATE TABLE and follow with INSERT statements.`;
 
-        sqlOutput = await callOllamaTextOnly(GEMMA_MODEL, sqlPrompt);
+        sqlOutput = await callOllamaTextOnly(MODEL_NAME, sqlPrompt);
         
         // Strip any markdown code fences from SQL output
         if (sqlOutput.includes('```')) {
@@ -141,6 +199,18 @@ Provide only the SQL code without any explanations, markdown formatting, or code
       sql: sqlOutput,
       response: modelResponse, // Legacy format support
     });
+    } catch (fetchError) {
+      if (fetchError instanceof Error && fetchError.message === 'Request timeout') {
+        return NextResponse.json(
+          { 
+            error: 'Request timeout',
+            details: 'Gemma3 model took too long to respond (>15 minutes). Try with a smaller image or use DeepSeek OCR instead.'
+          },
+          { status: 504 }
+        );
+      }
+      throw fetchError;
+    }
   } catch (error) {
     console.error('Error processing request:', error);
     return NextResponse.json(
@@ -149,4 +219,3 @@ Provide only the SQL code without any explanations, markdown formatting, or code
     );
   }
 }
-

@@ -7,6 +7,8 @@ export interface Message {
   content: string;
   htmlContent?: string;
   sqlContent?: string;
+  modelName?: string;
+  prompt?: PromptType;
   file?: {
     name: string;
     type: string;
@@ -15,7 +17,15 @@ export interface Message {
   timestamp: Date;
 }
 
-export const processHtmlContent = (html: string): string => {
+export const processHtmlContent = (html: string, prompt?: PromptType): string => {
+  // For "Parse the figure." prompt, return raw HTML without table/markdown processing
+  if (prompt === 'Parse the figure.') {
+    // Only convert newlines to <br> for plain text, but don't process tables
+    if (!html.includes('<table') && !html.includes('<div') && !html.includes('<p>')) {
+      return html.replace(/\\n/g, '<br>').replace(/\n/g, '<br>');
+    }
+    return html;
+  }
   // Convert markdown tables to HTML tables
   const convertMarkdownTable = (text: string): string => {
     const lines = text.split('\n').filter(line => line.trim());
@@ -214,6 +224,7 @@ export const createUserMessage = (
     id: Date.now().toString(),
     type: 'user',
     content: prompt,
+    prompt,
     file: {
       name: file.name,
       type: file.type,
@@ -247,16 +258,20 @@ export const submitChatMessage = async (
     const formData = new FormData();
     formData.append('prompt', `<image>\n${selectedPrompt}`);
     formData.append('image', selectedFile);
-    formData.append('output', 'html'); // Request HTML first
+    formData.append('output', 'html'); 
 
     // Select API endpoint based on model
-    let apiEndpoint: string;
-    if (selectedModel === 'Paddle OCR') {
+    let apiEndpoint: string = '/api/deepSeek_ocr_3B';
+    if (selectedModel === 'Hybrid (Paddle OCR + Qwen3VL)') {
       apiEndpoint = '/api/paddle_ocr_1B';
     } else if (selectedModel === 'DeepSeek OCR') {
       apiEndpoint = '/api/deepSeek_ocr_3B';
-    } else {
+    } else if (selectedModel === 'Qwen3VL') {
       apiEndpoint = '/api/qwen3VL';
+    } else if (selectedModel === 'Gemma3') {
+      apiEndpoint = '/api/gemma_3_4B';
+    } else if (selectedModel === 'Hybrid (DeepSeek OCR + Gemma3)') {
+      apiEndpoint = '/api/hybrid-model/deepseek-x-gemma';
     }
     
     const response = await fetch(apiEndpoint, {
@@ -299,6 +314,21 @@ export const submitChatMessage = async (
           if (match) {
             htmlContent = match[1];
           }
+        }
+      }
+    }
+
+    // Strip markdown code fences if model returned HTML wrapped in ```html
+    if (htmlContent && typeof htmlContent === 'string') {
+      // Check for ```html ... ``` pattern
+      const htmlCodeFenceMatch = htmlContent.match(/```html\s*([\s\S]*?)\s*```/);
+      if (htmlCodeFenceMatch) {
+        htmlContent = htmlCodeFenceMatch[1].trim();
+      } else {
+        // Check for generic ``` ... ``` pattern with HTML content
+        const genericCodeFenceMatch = htmlContent.match(/```\s*(<!DOCTYPE html[\s\S]*?<\/html>)\s*```/i);
+        if (genericCodeFenceMatch) {
+          htmlContent = genericCodeFenceMatch[1].trim();
         }
       }
     }
