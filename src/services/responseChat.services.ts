@@ -260,7 +260,7 @@ export const submitChatMessage = async (
     formData.append('image', selectedFile);
     formData.append('output', 'html'); 
 
-    // Select API endpoint based on model
+    //Select API endpoint based on model
     let apiEndpoint: string = '/api/deepSeek_ocr_3B';
     if (selectedModel === 'Hybrid (Paddle OCR + Qwen3VL)') {
       apiEndpoint = '/api/paddle_ocr_1B';
