@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import http from 'http';
 
 // Ollama instance - uses environment variable or defaults to localhost
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
@@ -17,6 +16,7 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
     },
     body: JSON.stringify(payload),
   });
@@ -28,45 +28,6 @@ async function callOllamaTextOnly(model: string, prompt: string) {
 
   const data = await response.json();
   return data.response || '';
-}
-
-async function fetchWithLongTimeout(url: string, options: any) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify(options.body);
-    
-    const req = http.request(url, {
-      method: options.method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(data),
-      },
-      timeout: 900000, // 15 minutes
-    }, (res) => {
-      let responseData = '';
-      
-      res.on('data', (chunk) => {
-        responseData += chunk;
-      });
-      
-      res.on('end', () => {
-        resolve({
-          ok: res.statusCode === 200,
-          status: res.statusCode,
-          text: async () => responseData,
-          json: async () => JSON.parse(responseData),
-        });
-      });
-    });
-    
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-    
-    req.write(data);
-    req.end();
-  });
 }
 
 export async function POST(request: NextRequest) {
@@ -110,9 +71,13 @@ IMPORTANT: If the image contains a table or structured data, output it in proper
     console.log('Image size:', base64Image.length, 'characters');
 
     try {
-      const response: any = await fetchWithLongTimeout(OLLAMA_URL, {
+      const response = await fetch(OLLAMA_API_URL, {
         method: 'POST',
-        body: payload,
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify(payload),
       });
 
       console.log('Ollama response status:', response.status);

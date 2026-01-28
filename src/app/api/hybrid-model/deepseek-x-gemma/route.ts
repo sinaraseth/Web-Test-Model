@@ -1,50 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import http from 'http';
 
 // Ollama instance - uses environment variable or defaults to localhost
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
 const DEEPSEEK_MODEL = "deepseek-ocr:3b";
 const GEMMA_MODEL = "gemma3:4b";
-
-async function fetchWithLongTimeout(url: string, options: any) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify(options.body);
-    
-    const req = http.request(url, {
-      method: options.method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(data),
-      },
-      timeout: 900000, // 15 minutes
-    }, (res) => {
-      let responseData = '';
-      
-      res.on('data', (chunk) => {
-        responseData += chunk;
-      });
-      
-      res.on('end', () => {
-        resolve({
-          ok: res.statusCode === 200,
-          status: res.statusCode,
-          text: async () => responseData,
-          json: async () => JSON.parse(responseData),
-        });
-      });
-    });
-    
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-    
-    req.write(data);
-    req.end();
-  });
-}
 
 async function callOllamaModel(model: string, prompt: string, base64Image: string) {
   const payload = {
@@ -54,9 +14,13 @@ async function callOllamaModel(model: string, prompt: string, base64Image: strin
     stream: false
   };
 
-  const response: any = await fetchWithLongTimeout(OLLAMA_API_URL, {
+  const response = await fetch(OLLAMA_API_URL, {
     method: 'POST',
-    body: payload,
+    headers: {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+    },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -74,10 +38,13 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     prompt: prompt,
     stream: false
   };
-
-  const response: any = await fetchWithLongTimeout(OLLAMA_API_URL, {
+  const response = await fetch(OLLAMA_API_URL, {
     method: 'POST',
-    body: payload,
+    headers: {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+    },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
