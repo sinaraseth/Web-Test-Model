@@ -198,12 +198,8 @@ export default function ChatBox() {
                     </pre>
                   ) : (
                     <div 
-                      className="prose prose-sm max-w-none overflow-x-auto"
+                      className="prose prose-sm max-w-none overflow-x-auto wrap-break-word whitespace-pre-wrap"
                       dangerouslySetInnerHTML={{ __html: processHtmlContent(message.htmlContent || '', message.prompt) }}
-                      style={{
-                        wordBreak: 'break-word',
-                        whiteSpace: 'pre-wrap',
-                      }}
                     />
                   )}
                 </>
@@ -227,9 +223,9 @@ export default function ChatBox() {
           <div className="flex justify-start">
             <div className="bg-gray-100 rounded-lg p-4">
               <div className="flex gap-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0s]"></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
               </div>
             </div>
           </div>
