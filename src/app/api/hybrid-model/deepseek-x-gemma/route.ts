@@ -50,6 +50,12 @@ async function callOllamaModel(model: string, prompt: string, base64Image: strin
     throw new Error(`${model} request failed: ${errorText}`);
   }
 
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const textResponse = await response.text();
+    throw new Error(`Unexpected response format from ${model}: ${textResponse.substring(0, 200)}`);
+  }
+
   const data = await response.json();
   return data.response || '';
 }
@@ -72,6 +78,12 @@ async function callOllamaTextOnly(model: string, prompt: string) {
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`${model} request failed: ${errorText}`);
+  }
+
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const textResponse = await response.text();
+    throw new Error(`Unexpected response format from ${model}: ${textResponse.substring(0, 200)}`);
   }
 
   const data = await response.json();

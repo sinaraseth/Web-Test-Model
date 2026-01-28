@@ -48,6 +48,12 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     throw new Error(`${model} request failed: ${errorText}`);
   }
 
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const textResponse = await response.text();
+    throw new Error(`Unexpected response format: ${textResponse.substring(0, 200)}`);
+  }
+
   const data = await response.json();
   return data.response || '';
 }
@@ -125,6 +131,19 @@ IMPORTANT: If the image contains a table or structured data, output it in proper
           details: errorText
         },
         { status: response.status }
+      );
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const textResponse = await response.text();
+      console.error('Unexpected response format:', textResponse);
+      return NextResponse.json(
+        { 
+          error: 'Invalid response format',
+          details: `Expected JSON but got: ${textResponse.substring(0, 200)}`
+        },
+        { status: 502 }
       );
     }
 
