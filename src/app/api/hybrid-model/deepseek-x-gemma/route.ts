@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import http from 'http';
 
-// Ollama local instance
-const OLLAMA_URL = "http://localhost:11434/api/generate";
+// Ollama instance - uses environment variable or defaults to localhost
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
 const DEEPSEEK_MODEL = "deepseek-ocr:3b";
 const GEMMA_MODEL = "gemma3:4b";
 
@@ -53,7 +54,7 @@ async function callOllamaModel(model: string, prompt: string, base64Image: strin
     stream: false
   };
 
-  const response: any = await fetchWithLongTimeout(OLLAMA_URL, {
+  const response: any = await fetchWithLongTimeout(OLLAMA_API_URL, {
     method: 'POST',
     body: payload,
   });
@@ -74,7 +75,7 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     stream: false
   };
 
-  const response: any = await fetchWithLongTimeout(OLLAMA_URL, {
+  const response: any = await fetchWithLongTimeout(OLLAMA_API_URL, {
     method: 'POST',
     body: payload,
   });

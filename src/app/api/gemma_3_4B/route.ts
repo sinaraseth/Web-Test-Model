@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import http from 'http';
 
-// Ollama local instance
-const OLLAMA_URL = "http://localhost:11434/api/generate";
+// Ollama instance - uses environment variable or defaults to localhost
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
 const MODEL_NAME = "gemma3:4b";
 
 async function callOllamaTextOnly(model: string, prompt: string) {
@@ -12,7 +13,7 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     stream: false
   };
 
-  const response = await fetch(OLLAMA_URL, {
+  const response = await fetch(OLLAMA_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

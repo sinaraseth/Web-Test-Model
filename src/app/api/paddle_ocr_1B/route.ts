@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Ollama local instance
-const OLLAMA_URL = "http://localhost:11434/api/generate";
+// Ollama instance - uses environment variable or defaults to localhost
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
 const MODEL_NAME = "deepseek-ocr:3b";
 
 export async function POST(request: NextRequest) {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     console.log('Sending request to Ollama with prompt:', prompt);
 
     // Send request to Ollama
-    const response = await fetch(OLLAMA_URL, {
+    const response = await fetch(OLLAMA_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
