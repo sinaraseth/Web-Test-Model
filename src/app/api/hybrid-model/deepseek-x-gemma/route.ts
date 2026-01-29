@@ -41,6 +41,7 @@ async function callOllamaModel(model: string, prompt: string, base64Image: strin
     headers: {
       'Content-Type': 'application/json',
       'ngrok-skip-browser-warning': 'true',
+      'Bypass-Tunnel-Reminder': 'true',
     },
     body: JSON.stringify(payload),
   });
@@ -71,6 +72,7 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     headers: {
       'Content-Type': 'application/json',
       'ngrok-skip-browser-warning': 'true',
+      'Bypass-Tunnel-Reminder': 'true',
     },
     body: JSON.stringify(payload),
   });

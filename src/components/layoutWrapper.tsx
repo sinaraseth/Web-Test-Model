@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { SidebarProvider, useSidebar } from "../contexts/SidebarContext";
+import { SidebarProvider, useSidebar } from "../contexts/sidebarContext";
 import { ModelProvider } from "../contexts/modelContext";
 import Sidebar from "./sidebar";
 import Header from "./header";

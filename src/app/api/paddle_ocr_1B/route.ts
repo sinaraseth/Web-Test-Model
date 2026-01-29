@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': 'true',
+        'Bypass-Tunnel-Reminder': 'true',
       },
       body: JSON.stringify(payload),
     });

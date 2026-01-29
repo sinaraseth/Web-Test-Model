@@ -39,6 +39,7 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     headers: {
       'Content-Type': 'application/json',
       'ngrok-skip-browser-warning': 'true',
+      'Bypass-Tunnel-Reminder': 'true',
     },
     body: JSON.stringify(payload),
   });
@@ -104,6 +105,7 @@ IMPORTANT: If the image contains a table or structured data, output it in proper
         headers: {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
+          'Bypass-Tunnel-Reminder': 'true',
         },
         body: JSON.stringify(payload),
       });
