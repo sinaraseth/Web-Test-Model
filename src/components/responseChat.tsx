@@ -14,7 +14,7 @@ import {
   submitChatMessage,
 } from '../services/responseChat.services';
 
-type ModelOption = 'DeepSeek OCR' | 'Gemma3' | 'Hybrid (DeepSeek OCR + Gemma3)'| 'Hybrid (Paddle OCR + Qwen3VL)';
+type ModelOption = 'DeepSeek OCR' | 'Gemma3' | 'Hybrid (DeepSeek OCR + Gemma3)'| 'Hybrid (Paddle OCR + Qwen3VL)' | 'Granite Docling';
 
 export default function ChatBox() {
   const { selectedModel } = useModel();
@@ -30,10 +30,11 @@ export default function ChatBox() {
   const [selectedModels, setSelectedModels] = useState<ModelOption[]>(['DeepSeek OCR']);
   const [pendingSubmit, setPendingSubmit] = useState<{ prompt: PromptType; file: File; imageUrl: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const promptOptions: PromptType[] = ['Parse the figure.', 'Convert the document to markdown.', 'Describe the image to detail.', 'OCR the images.'];
 
-  const modelOptions: ModelOption[] = ['DeepSeek OCR', 'Gemma3', 'Hybrid (DeepSeek OCR + Gemma3)', 'Hybrid (Paddle OCR + Qwen3VL)'];
+  const modelOptions: ModelOption[] = ['DeepSeek OCR', 'Gemma3', 'Hybrid (DeepSeek OCR + Gemma3)', 'Hybrid (Paddle OCR + Qwen3VL)', 'Granite Docling'];
 
   const toggleModelSelection = (model: ModelOption) => {
     setSelectedModels(prev => 
@@ -76,6 +77,13 @@ export default function ChatBox() {
     }
   };
 
+  const clearFileInput = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile || selectedModels.length === 0) return;
@@ -86,6 +94,12 @@ export default function ChatBox() {
     // Add user message once
     const userMessage = createUserMessage(selectedPrompt, selectedFile, imageUrl);
     setMessages((prev) => [...prev, userMessage]);
+    
+    // Close all dropdowns and clear file immediately
+    setIsOpen(false);
+    setIsModelOpen(false);
+    clearFileInput();
+    
     setIsLoading(true);
 
     // Process with all selected models
@@ -105,7 +119,6 @@ export default function ChatBox() {
     }
 
     setIsLoading(false);
-    setSelectedFile(null);
   };
 
   const processWithSelectedModels = async () => {
@@ -139,7 +152,7 @@ export default function ChatBox() {
     }
 
     setIsLoading(false);
-    setSelectedFile(null);
+    clearFileInput();
     setPendingSubmit(null);
     setSelectedModels([]);
   };
@@ -305,7 +318,7 @@ export default function ChatBox() {
                 <span className="truncate">{selectedFile.name}</span>
                 <button
                   type="button"
-                  onClick={() => setSelectedFile(null)}
+                  onClick={clearFileInput}
                   className="text-gray-500 hover:text-gray-700 shrink-0"
                 >
                   ✕
@@ -365,6 +378,7 @@ export default function ChatBox() {
                 type="file"
                 accept={VALID_FILE_TYPES.join(',')}
                 onChange={handleFileChange}
+                ref={fileInputRef}
                 className="hidden"
                 aria-label="Upload PDF or image file"
               />
@@ -437,7 +451,7 @@ export default function ChatBox() {
           </div>
         </form>
       </div>
-      <p className="text-center text-xs text-gray-500">By Techo Startup Center</p>
+      <p className="text-center text-xs text-gray-500">That AI might take a bit long time to process and generate a response, while it run on local machine by Ollama!!!</p>
     </div>
   );
 }

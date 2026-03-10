@@ -1,31 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import http from 'http';
 
-// Ollama instance - uses environment variable or defaults to localhost
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
-const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
+// Ollama local instance
+const OLLAMA_URL = "http://localhost:11434/api/generate";
 const MODEL_NAME = "gemma3:4b";
-const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-
-// Fetch with timeout support
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Request timeout');
-    }
-    throw error;
-  }
-}
 
 async function callOllamaTextOnly(model: string, prompt: string) {
   const payload = {
@@ -34,12 +12,10 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     stream: false
   };
 
-  const response = await fetchWithTimeout(OLLAMA_API_URL, {
+  const response = await fetch(OLLAMA_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
-      'Bypass-Tunnel-Reminder': 'true',
     },
     body: JSON.stringify(payload),
   });
@@ -49,14 +25,47 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     throw new Error(`${model} request failed: ${errorText}`);
   }
 
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    const textResponse = await response.text();
-    throw new Error(`Unexpected response format: ${textResponse.substring(0, 200)}`);
-  }
-
   const data = await response.json();
   return data.response || '';
+}
+
+async function fetchWithLongTimeout(url: string, options: any) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(options.body);
+    
+    const req = http.request(url, {
+      method: options.method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+      timeout: 900000, // 15 minutes
+    }, (res) => {
+      let responseData = '';
+      
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+      
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode === 200,
+          status: res.statusCode,
+          text: async () => responseData,
+          json: async () => JSON.parse(responseData),
+        });
+      });
+    });
+    
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+    
+    req.write(data);
+    req.end();
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -81,11 +90,20 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await imageFile.arrayBuffer();
     const base64Image = Buffer.from(arrayBuffer).toString('base64');
 
-    // Enhance prompt to ensure HTML output
-    const basePrompt = prompt || "Parse the figure.";
+    // Enhance prompt to ensure ONLY HTML output without descriptions
+    const basePrompt = prompt || "Parse the figure and convert it to HTML.";
     const actualPrompt = `${basePrompt}
 
-IMPORTANT: If the image contains a table or structured data, output it in proper HTML format using <table>, <tr>, <th>, and <td> tags. Do not use markdown. Provide only the HTML output without explanations or code fences.`;
+CRITICAL REQUIREMENTS:
+- Output ONLY pure HTML code with proper structure
+- Use semantic HTML tags: <table>, <tr>, <th>, <td> for tables
+- NO titles, NO descriptions, NO explanations, NO summary text
+- NO text like "Source:", "Overall Trends:", or any narrative
+- NO markdown code fences (\`\`\`html)
+- Start directly with HTML tags (e.g., <table> or <div>)
+- Extract ONLY the data from the image into HTML structure
+
+Output the HTML now:`;
 
     // Prepare payload for Ollama
     const payload = {
@@ -100,14 +118,9 @@ IMPORTANT: If the image contains a table or structured data, output it in proper
     console.log('Image size:', base64Image.length, 'characters');
 
     try {
-      const response = await fetchWithTimeout(OLLAMA_API_URL, {
+      const response: any = await fetchWithLongTimeout(OLLAMA_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-          'Bypass-Tunnel-Reminder': 'true',
-        },
-        body: JSON.stringify(payload),
+        body: payload,
       });
 
       console.log('Ollama response status:', response.status);
@@ -136,19 +149,6 @@ IMPORTANT: If the image contains a table or structured data, output it in proper
       );
     }
 
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const textResponse = await response.text();
-      console.error('Unexpected response format:', textResponse);
-      return NextResponse.json(
-        { 
-          error: 'Invalid response format',
-          details: `Expected JSON but got: ${textResponse.substring(0, 200)}`
-        },
-        { status: 502 }
-      );
-    }
-
     const data = await response.json();
     console.log('Ollama response data:', data);
 
@@ -166,6 +166,23 @@ IMPORTANT: If the image contains a table or structured data, output it in proper
         if (genericCodeFenceMatch) {
           modelResponse = genericCodeFenceMatch[1].trim();
         }
+      }
+    }
+
+    // Extract only HTML tags, removing any descriptive text before/after
+    // Find the first HTML tag and last closing tag
+    const htmlStartMatch = modelResponse.match(/(<(?:table|div|h[1-6]|p|ul|ol|section|article)[\s>])/i);
+    if (htmlStartMatch && htmlStartMatch.index !== undefined) {
+      // Find the last closing tag that matches common root elements
+      const afterStart = modelResponse.substring(htmlStartMatch.index);
+      const htmlEndMatch = afterStart.match(/(<\/(?:table|div|section|article|html)>)(?![\s\S]*<\/(?:table|div|section|article|html)>)/i);
+      
+      if (htmlEndMatch && htmlEndMatch.index !== undefined) {
+        // Extract only the HTML portion
+        modelResponse = afterStart.substring(0, htmlEndMatch.index + htmlEndMatch[0].length).trim();
+      } else {
+        // If no clear end tag, just remove text before first HTML tag
+        modelResponse = afterStart.trim();
       }
     }
 

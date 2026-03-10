@@ -1,32 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Ollama instance - uses environment variable or defaults to localhost
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
-const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
+// Ollama local instance
+const OLLAMA_URL = "http://localhost:11434/api/generate";
 const MODEL_NAME = "deepseek-ocr:3b";
 const GEMMA_MODEL = "gemma3:4b";
-const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-
-// Fetch with timeout support
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Request timeout');
-    }
-    throw error;
-  }
-}
 
 async function callOllamaTextOnly(model: string, prompt: string) {
   const payload = {
@@ -35,12 +12,10 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     stream: false
   };
 
-  const response = await fetchWithTimeout(OLLAMA_API_URL, {
+  const response = await fetch(OLLAMA_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
-      'Bypass-Tunnel-Reminder': 'true',
     },
     body: JSON.stringify(payload),
   });
@@ -87,12 +62,10 @@ export async function POST(request: NextRequest) {
     console.log('Sending request to Ollama with prompt:', prompt);
 
     // Send request to Ollama
-    const response = await fetchWithTimeout(OLLAMA_API_URL, {
+    const response = await fetch(OLLAMA_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-        'Bypass-Tunnel-Reminder': 'true',
       },
       body: JSON.stringify(payload),
     });
@@ -176,4 +149,3 @@ Provide only the SQL code without any explanations, markdown formatting, or code
     );
   }
 }
-

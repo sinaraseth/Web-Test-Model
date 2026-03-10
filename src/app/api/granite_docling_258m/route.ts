@@ -1,0 +1,243 @@
+import { NextRequest, NextResponse } from 'next/server';
+import http from 'http';
+
+// Ollama local instance
+const OLLAMA_URL = "http://localhost:11434/api/generate";
+const MODEL_NAME = "ibm/granite-docling:258m";
+
+async function callOllamaTextOnly(model: string, prompt: string) {
+  const payload = {
+    model: model,
+    prompt: prompt,
+    stream: false
+  };
+
+  const response = await fetch(OLLAMA_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`${model} request failed: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.response || '';
+}
+
+async function fetchWithLongTimeout(url: string, options: any) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(options.body);
+    
+    const req = http.request(url, {
+      method: options.method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+      timeout: 900000, // 15 minutes
+    }, (res) => {
+      let responseData = '';
+      
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+      
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode === 200,
+          status: res.statusCode,
+          text: async () => responseData,
+          json: async () => JSON.parse(responseData),
+        });
+      });
+    });
+    
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+    
+    req.write(data);
+    req.end();
+  });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData();
+    
+    console.log('Granite Docling - Received request with formData keys:', Array.from(formData.keys()));
+    
+    // Extract image and prompt from formData
+    const imageFile = formData.get('image') as File;
+    const prompt = formData.get('prompt') as string;
+    const outputFormat = formData.get('output') as string || 'html';
+    
+    if (!imageFile) {
+      return NextResponse.json(
+        { error: 'No image file provided' },
+        { status: 400 }
+      );
+    }
+
+    // Convert image to base64
+    const arrayBuffer = await imageFile.arrayBuffer();
+    const base64Image = Buffer.from(arrayBuffer).toString('base64');
+
+    // Enhance prompt to ensure ONLY HTML output without descriptions
+    const basePrompt = prompt || "Extract and parse the document content.";
+    const actualPrompt = `${basePrompt}
+
+RULES:
+- Output valid HTML ONLY (no CSS, no inline styles)
+- Use semantic tags: <table>, <tr>, <th>, <td>, <h1>, <p>
+- NO explanations, NO markdown, NO comments
+- NO extra text like "Source:", "Note:"
+- Start directly with HTML tags
+
+Output HTML now:`;
+
+    // Prepare payload for Ollama
+    const payload = {
+      model: MODEL_NAME,
+      prompt: actualPrompt,
+      images: [base64Image],
+      stream: false
+    };
+
+    console.log('Sending request to Ollama with model:', MODEL_NAME);
+    console.log('Image size:', base64Image.length, 'characters');
+
+    try {
+      const response: any = await fetchWithLongTimeout(OLLAMA_URL, {
+        method: 'POST',
+        body: payload,
+      });
+
+      console.log('Ollama response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Ollama error response:', errorText);
+        
+        // Check if Ollama is running
+        if (response.status === 404) {
+          return NextResponse.json(
+            { 
+              error: 'Ollama server not found',
+              details: 'Make sure Ollama is running on http://localhost:11434'
+            },
+            { status: 503 }
+          );
+        }
+        
+        return NextResponse.json(
+          { 
+            error: 'Ollama request failed',
+            details: errorText
+          },
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json();
+      console.log('Ollama response received');
+
+      // Extract response from Ollama format
+      let modelResponse = data.response || '';
+
+      // Strip markdown code fences if model returned HTML wrapped in ```html
+      if (modelResponse.includes('```')) {
+        const htmlCodeFenceMatch = modelResponse.match(/```html\s*([\s\S]*?)\s*```/);
+        if (htmlCodeFenceMatch) {
+          modelResponse = htmlCodeFenceMatch[1].trim();
+        } else {
+          // Check for generic ``` ... ``` pattern with HTML content
+          const genericCodeFenceMatch = modelResponse.match(/```\s*(<!DOCTYPE html[\s\S]*?<\/html>|<table[\s\S]*?<\/table>)\s*```/i);
+          if (genericCodeFenceMatch) {
+            modelResponse = genericCodeFenceMatch[1].trim();
+          }
+        }
+      }
+
+      // Extract only HTML tags, removing any descriptive text before/after
+      const htmlStartMatch = modelResponse.match(/(<(?:table|div|h[1-6]|p|ul|ol|section|article)[\s>])/i);
+      if (htmlStartMatch && htmlStartMatch.index !== undefined) {
+        // Find the last closing tag that matches common root elements
+        const afterStart = modelResponse.substring(htmlStartMatch.index);
+        const htmlEndMatch = afterStart.match(/(<\/(?:table|div|section|article|html)>)(?![\s\S]*<\/(?:table|div|section|article|html)>)/i);
+        
+        if (htmlEndMatch && htmlEndMatch.index !== undefined) {
+          // Extract only the HTML portion
+          modelResponse = afterStart.substring(0, htmlEndMatch.index + htmlEndMatch[0].length).trim();
+        } else {
+          // If no clear end tag, just remove text before first HTML tag
+          modelResponse = afterStart.trim();
+        }
+      }
+
+      // Generate SQL from HTML if it contains tables
+      let sqlOutput = undefined;
+      if (modelResponse && (modelResponse.includes('<table') || modelResponse.toLowerCase().includes('table'))) {
+        console.log('Table detected, generating SQL (text-only)...');
+        try {
+          const sqlPrompt = `Convert the following HTML table to SQL CREATE TABLE and INSERT statements. 
+Extract the table structure and data, then generate:
+1. A CREATE TABLE statement with appropriate column names and data types (use VARCHAR for text, INT for numbers)
+2. INSERT statements for all the data rows
+
+HTML content:
+${modelResponse}
+
+Provide only the SQL code without any explanations, markdown formatting, or code fences. Start with CREATE TABLE and follow with INSERT statements.`;
+
+          sqlOutput = await callOllamaTextOnly(MODEL_NAME, sqlPrompt);
+          
+          // Strip any markdown code fences from SQL output
+          if (sqlOutput.includes('```')) {
+            const sqlMatch = sqlOutput.match(/```sql\s*([\s\S]*?)\s*```/) || sqlOutput.match(/```\s*([\s\S]*?)\s*```/);
+            if (sqlMatch) {
+              sqlOutput = sqlMatch[1].trim();
+            }
+          }
+          
+          console.log('SQL generation completed');
+        } catch (sqlError) {
+          console.warn('Failed to generate SQL:', sqlError);
+          // Continue without SQL if generation fails
+        }
+      }
+
+      // Return in expected format
+      return NextResponse.json({
+        type: outputFormat,
+        html: modelResponse,
+        sql: sqlOutput,
+        response: modelResponse, // Legacy format support
+      });
+    } catch (fetchError) {
+      if (fetchError instanceof Error && fetchError.message === 'Request timeout') {
+        return NextResponse.json(
+          { 
+            error: 'Request timeout',
+            details: 'Granite Docling model took too long to respond (>15 minutes). Try with a smaller image.'
+          },
+          { status: 504 }
+        );
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('Error processing request:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to process request' },
+      { status: 500 }
+    );
+  }
+}

@@ -272,6 +272,8 @@ export const submitChatMessage = async (
       apiEndpoint = '/api/gemma_3_4B';
     } else if (selectedModel === 'Hybrid (DeepSeek OCR + Gemma3)') {
       apiEndpoint = '/api/hybrid-model/deepseek-x-gemma';
+    } else if (selectedModel === 'Granite Docling') {
+      apiEndpoint = '/api/granite_docling_258m';
     }
     
     const response = await fetch(apiEndpoint, {
@@ -334,7 +336,7 @@ export const submitChatMessage = async (
     }
 
     // Only request SQL separately if not already provided (for models other than Paddle OCR)
-    if (htmlContent && htmlContent.includes('<table') && !sqlContent) {
+    if (htmlContent && htmlContent.includes('<table') && !sqlContent && selectedModel !== 'Paddle OCR' && selectedModel !== 'Granite Docling') {
       try {
         const sqlFormData = new FormData();
         sqlFormData.append('prompt', `<image>\n${selectedPrompt}`);

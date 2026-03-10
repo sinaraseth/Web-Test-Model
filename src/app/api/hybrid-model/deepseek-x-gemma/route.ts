@@ -1,31 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
+import http from 'http';
 
-// Ollama instance - uses environment variable or defaults to localhost
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
-const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
+// Ollama local instance
+const OLLAMA_URL = "http://localhost:11434/api/generate";
 const DEEPSEEK_MODEL = "deepseek-ocr:3b";
 const GEMMA_MODEL = "gemma3:4b";
-const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
-// Fetch with timeout support
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
+async function fetchWithLongTimeout(url: string, options: any) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(options.body);
+    
+    const req = http.request(url, {
+      method: options.method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+      timeout: 900000, // 15 minutes
+    }, (res) => {
+      let responseData = '';
+      
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+      
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode === 200,
+          status: res.statusCode,
+          text: async () => responseData,
+          json: async () => JSON.parse(responseData),
+        });
+      });
     });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Request timeout');
-    }
-    throw error;
-  }
+    
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+    
+    req.write(data);
+    req.end();
+  });
 }
 
 async function callOllamaModel(model: string, prompt: string, base64Image: string) {
@@ -36,25 +53,14 @@ async function callOllamaModel(model: string, prompt: string, base64Image: strin
     stream: false
   };
 
-  const response = await fetchWithTimeout(OLLAMA_API_URL, {
+  const response: any = await fetchWithLongTimeout(OLLAMA_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
-      'Bypass-Tunnel-Reminder': 'true',
-    },
-    body: JSON.stringify(payload),
+    body: payload,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`${model} request failed: ${errorText}`);
-  }
-
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    const textResponse = await response.text();
-    throw new Error(`Unexpected response format from ${model}: ${textResponse.substring(0, 200)}`);
   }
 
   const data = await response.json();
@@ -67,25 +73,15 @@ async function callOllamaTextOnly(model: string, prompt: string) {
     prompt: prompt,
     stream: false
   };
-  const response = await fetchWithTimeout(OLLAMA_API_URL, {
+
+  const response: any = await fetchWithLongTimeout(OLLAMA_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
-      'Bypass-Tunnel-Reminder': 'true',
-    },
-    body: JSON.stringify(payload),
+    body: payload,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`${model} request failed: ${errorText}`);
-  }
-
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    const textResponse = await response.text();
-    throw new Error(`Unexpected response format from ${model}: ${textResponse.substring(0, 200)}`);
   }
 
   const data = await response.json();
@@ -135,26 +131,53 @@ export async function POST(request: NextRequest) {
 
     console.log('Step 3: Running Gemma3 correction (text-only comparison)...');
     // Step 3: Use Gemma3 to correct and merge both outputs (no image needed, just compare texts)
-    const correctionPrompt = `You are given two OCR outputs from different models for the same image. Your task is to analyze both outputs and produce a single corrected, accurate version in HTML format.
+    const correctionPrompt = `You are given two OCR outputs from different models analyzing the same document image:
 
-DeepSeek OCR Output:
+**DeepSeek OCR Output:**
 ${deepseekOutput}
 
-Gemma3 Output:
+**Gemma3 Output:**
 ${gemmaOutput}
 
-Please review both outputs, identify any discrepancies or errors, and provide a single corrected and improved version. Focus on:
-1. Accuracy of the content
-2. Proper HTML formatting (use <table>, <tr>, <th>, <td> tags for tables)
-3. Completeness of information
-4. Consistency
+TASK:
+- Compare both outputs and identify the most accurate information from each
+- Fix OCR errors, missing text, wrong numbers, and incorrect table structure
+- Merge the best parts from both outputs into one corrected version
+- Ensure the final HTML accurately represents the document data
 
-Provide only the final corrected HTML output without any explanations or markdown code fences.`;
+RULES:
+- Output valid HTML ONLY
+- Preserve reading order
+- Use semantic HTML (<h1>, <p>, <table>, <tr>, <th>, <td>)
+- For tables: Ensure proper structure with headers and data rows
+- For graphs/charts: Represent data points as tables
+- Do NOT explain changes
+- Do NOT include markdown code fences
+- Do NOT include comments or descriptions
+- Do NOT add text like "Source:", "Note:", or summaries
+- Start directly with HTML tags
 
-    const correctedOutput = await callOllamaTextOnly(
+Output the corrected HTML now:`;
+
+    let correctedOutput = await callOllamaTextOnly(
       GEMMA_MODEL,
       correctionPrompt
     );
+    
+    // Strip any markdown code fences or explanatory text before/after HTML
+    if (correctedOutput.includes('```')) {
+      const htmlMatch = correctedOutput.match(/```html\s*([\s\S]*?)\s*```/) || correctedOutput.match(/```\s*([\s\S]*?)\s*```/);
+      if (htmlMatch) {
+        correctedOutput = htmlMatch[1].trim();
+      }
+    }
+    
+    // Remove any leading explanatory text before HTML tags
+    const htmlStartMatch = correctedOutput.match(/(<(?:table|div|h[1-6]|p|ul|ol|section|article)[\s>])/i);
+    if (htmlStartMatch && htmlStartMatch.index && htmlStartMatch.index > 0) {
+      correctedOutput = correctedOutput.substring(htmlStartMatch.index);
+    }
+    
     console.log('Correction completed');
 
     // Step 4: Generate SQL from corrected HTML if it contains tables

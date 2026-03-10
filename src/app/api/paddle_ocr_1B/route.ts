@@ -1,30 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Configure route to allow longer execution time
+export const maxDuration = 300; // 5 minutes per request
+export const dynamic = 'force-dynamic';
+
 // Ollama instance - uses environment variable or defaults to localhost
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OLLAMA_API_URL = `${OLLAMA_URL}/api/generate`;
 const MODEL_NAME = "deepseek-ocr:3b";
-const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+const TIMEOUT_MS = 4 * 60 * 1000; // 4 minutes
+const MAX_RETRIES = 2;
 
-// Fetch with timeout support
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+// Fetch with timeout support and retry logic
+async function fetchWithTimeout(
+  url: string, 
+  options: RequestInit, 
+  timeoutMs: number = TIMEOUT_MS,
+  retries: number = MAX_RETRIES
+): Promise<Response> {
+  let lastError: Error | null = null;
   
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Request timeout');
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+      console.log(`Attempt ${attempt + 1}/${retries + 1} - Sending request to Ollama...`);
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      console.log(`Attempt ${attempt + 1} succeeded`);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error instanceof Error ? error : new Error('Unknown error');
+      
+      const isTimeout = lastError.name === 'AbortError' || 
+                       lastError.message.includes('timeout') ||
+                       lastError.message.includes('HeadersTimeoutError');
+      
+      if (isTimeout && attempt < retries) {
+        console.log(`Attempt ${attempt + 1} timed out, retrying in 2 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
+      
+      if (isTimeout) {
+        throw new Error('Request timeout - Ollama took too long to respond');
+      }
+      throw lastError;
     }
-    throw error;
   }
+  
+  throw lastError || new Error('Request failed');
 }
 
 export async function POST(request: NextRequest) {
