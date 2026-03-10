@@ -18,7 +18,7 @@ function LayoutContent({ children }: { children: ReactNode }) {
         }`}
       >
         <Header isMinimized={isMinimized} />
-        <main className="flex-1 bg-white p-8 pt-20 pb-7 overflow-y-auto">
+        <main className="flex-1 bg-white px-6 pt-12 pb-2 overflow-hidden">
           {children}
         </main>
       </div>
