@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
 // Ollama local instance
 const OLLAMA_URL = "http://localhost:11434/api/generate";
@@ -9,13 +9,13 @@ async function callOllamaTextOnly(model: string, prompt: string) {
   const payload = {
     model: model,
     prompt: prompt,
-    stream: false
+    stream: false,
   };
 
   const response = await fetch(OLLAMA_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
   });
@@ -26,86 +26,92 @@ async function callOllamaTextOnly(model: string, prompt: string) {
   }
 
   const data = await response.json();
-  return data.response || '';
+  return data.response || "";
 }
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    
-    console.log('Received request with formData keys:', Array.from(formData.keys()));
-    
+
+    console.log(
+      "Received request with formData keys:",
+      Array.from(formData.keys()),
+    );
+
     // Extract image and prompt from formData
-    const imageFile = formData.get('image') as File;
-    const prompt = formData.get('prompt') as string;
-    const outputFormat = formData.get('output') as string || 'html';
-    
+    const imageFile = formData.get("image") as File;
+    const prompt = formData.get("prompt") as string;
+    const outputFormat = (formData.get("output") as string) || "html";
+
     if (!imageFile) {
       return NextResponse.json(
-        { error: 'No image file provided' },
-        { status: 400 }
+        { error: "No image file provided" },
+        { status: 400 },
       );
     }
 
     // Convert image to base64
     const arrayBuffer = await imageFile.arrayBuffer();
-    const base64Image = Buffer.from(arrayBuffer).toString('base64');
+    const base64Image = Buffer.from(arrayBuffer).toString("base64");
 
     // Prepare payload for Ollama
     const payload = {
       model: MODEL_NAME,
       prompt: prompt || "Parse the figure.",
       images: [base64Image],
-      stream: false
+      stream: false,
     };
 
-    console.log('Sending request to Ollama with prompt:', prompt);
+    console.log("Sending request to Ollama with prompt:", prompt);
 
     // Send request to Ollama
     const response = await fetch(OLLAMA_URL, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
     });
 
-    console.log('Ollama response status:', response.status);
+    console.log("Ollama response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Ollama error response:', errorText);
-      
+      console.error("Ollama error response:", errorText);
+
       // Check if Ollama is running
       if (response.status === 404) {
         return NextResponse.json(
-          { 
-            error: 'Ollama server not found',
-            details: 'Make sure Ollama is running on http://localhost:11434'
+          {
+            error: "Ollama server not found",
+            details: "Make sure Ollama is running on http://localhost:11434",
           },
-          { status: 503 }
+          { status: 503 },
         );
       }
-      
+
       return NextResponse.json(
-        { 
-          error: 'Ollama request failed',
-          details: errorText
+        {
+          error: "Ollama request failed",
+          details: errorText,
         },
-        { status: response.status }
+        { status: response.status },
       );
     }
 
     const data = await response.json();
-    console.log('Ollama response data:', data);
+    console.log("Ollama response data:", data);
 
     // Extract response from Ollama format
-    const modelResponse = data.response || '';
+    const modelResponse = data.response || "";
 
     // Generate SQL from HTML if it contains tables
     let sqlOutput = undefined;
-    if (modelResponse.includes('<table') || modelResponse.toLowerCase().includes('table')) {
-      console.log('Table detected, generating SQL with Gemma3...');
+    if (
+      modelResponse.includes("<table") ||
+      modelResponse.toLowerCase().includes("table")
+    ) {
+      console.log("Table detected, generating SQL with Gemma3...");
       try {
         const sqlPrompt = `Convert the following HTML table to SQL CREATE TABLE and INSERT statements. 
 Extract the table structure and data, then generate:
@@ -118,18 +124,20 @@ ${modelResponse}
 Provide only the SQL code without any explanations, markdown formatting, or code fences. Start with CREATE TABLE and follow with INSERT statements.`;
 
         sqlOutput = await callOllamaTextOnly(GEMMA_MODEL, sqlPrompt);
-        
+
         // Strip any markdown code fences from SQL output
-        if (sqlOutput.includes('```')) {
-          const sqlMatch = sqlOutput.match(/```sql\s*([\s\S]*?)\s*```/) || sqlOutput.match(/```\s*([\s\S]*?)\s*```/);
+        if (sqlOutput.includes("```")) {
+          const sqlMatch =
+            sqlOutput.match(/```sql\s*([\s\S]*?)\s*```/) ||
+            sqlOutput.match(/```\s*([\s\S]*?)\s*```/);
           if (sqlMatch) {
             sqlOutput = sqlMatch[1].trim();
           }
         }
-        
-        console.log('SQL generation completed');
+
+        console.log("SQL generation completed");
       } catch (sqlError) {
-        console.warn('Failed to generate SQL:', sqlError);
+        console.warn("Failed to generate SQL:", sqlError);
         // Continue without SQL if generation fails
       }
     }
@@ -142,10 +150,13 @@ Provide only the SQL code without any explanations, markdown formatting, or code
       response: modelResponse, // Legacy format support
     });
   } catch (error) {
-    console.error('Error processing request:', error);
+    console.error("Error processing request:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process request' },
-      { status: 500 }
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to process request",
+      },
+      { status: 500 },
     );
   }
 }

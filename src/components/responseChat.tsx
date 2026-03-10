@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from 'react';
-import { Plus, FileText, ChevronUp, X, SendHorizontal } from 'lucide-react';
-import { PromptType } from '../services/prompt.services';
-import { VALID_FILE_TYPES } from '../services/images.services';
-import { useModel } from '../contexts/modelContext';
+import { useState, useRef, useEffect } from "react";
+import { Plus, FileText, ChevronUp, X, SendHorizontal } from "lucide-react";
+import { PromptType } from "../services/prompt.services";
+import { VALID_FILE_TYPES } from "../services/images.services";
+import { useModel } from "../contexts/modelContext";
 import {
   Message,
   processHtmlContent,
@@ -12,35 +12,56 @@ import {
   createUserMessage,
   createErrorMessage,
   submitChatMessage,
-} from '../services/responseChat.services';
+} from "../services/responseChat.services";
 
-type ModelOption = 'DeepSeek OCR' | 'Gemma3' | 'Hybrid (DeepSeek OCR + Gemma3)'| 'Hybrid (Paddle OCR + Qwen3VL)' | 'Granite Docling';
+type ModelOption =
+  | "DeepSeek OCR"
+  | "Gemma3"
+  | "Hybrid (DeepSeek OCR + Gemma3)"
+  | "Hybrid (Paddle OCR + Qwen3VL)"
+  | "Granite Docling";
 
 export default function ChatBox() {
   const { selectedModel } = useModel();
-  const [selectedPrompt, setSelectedPrompt] = useState<PromptType>('Parse the figure.');
+  const [selectedPrompt, setSelectedPrompt] =
+    useState<PromptType>("Parse the figure.");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
-  const [defaultModel, setDefaultModel] = useState<ModelOption>('DeepSeek OCR');
+  const [defaultModel, setDefaultModel] = useState<ModelOption>("DeepSeek OCR");
   const [sqlToggles, setSqlToggles] = useState<{ [key: string]: boolean }>({});
   const [showModelSelector, setShowModelSelector] = useState(false);
-  const [selectedModels, setSelectedModels] = useState<ModelOption[]>(['DeepSeek OCR']);
-  const [pendingSubmit, setPendingSubmit] = useState<{ prompt: PromptType; file: File; imageUrl: string } | null>(null);
+  const [selectedModels, setSelectedModels] = useState<ModelOption[]>([
+    "DeepSeek OCR",
+  ]);
+  const [pendingSubmit, setPendingSubmit] = useState<{
+    prompt: PromptType;
+    file: File;
+    imageUrl: string;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const promptOptions: PromptType[] = ['Parse the figure.', 'Convert the document to markdown.', 'Describe the image to detail.', 'OCR the images.'];
+  const promptOptions: PromptType[] = [
+    "Parse the figure.",
+    "Convert the document to markdown.",
+    "Describe the image to detail.",
+    "OCR the images.",
+  ];
 
-  const modelOptions: ModelOption[] = ['DeepSeek OCR', 'Gemma3', 'Hybrid (DeepSeek OCR + Gemma3)', 'Hybrid (Paddle OCR + Qwen3VL)', 'Granite Docling'];
+  const modelOptions: ModelOption[] = [
+    "DeepSeek OCR",
+    "Gemma3",
+    "Hybrid (DeepSeek OCR + Gemma3)",
+    "Hybrid (Paddle OCR + Qwen3VL)",
+    "Granite Docling",
+  ];
 
   const toggleModelSelection = (model: ModelOption) => {
-    setSelectedModels(prev => 
-      prev.includes(model) 
-        ? prev.filter(m => m !== model)
-        : [...prev, model]
+    setSelectedModels((prev) =>
+      prev.includes(model) ? prev.filter((m) => m !== model) : [...prev, model],
     );
   };
 
@@ -53,13 +74,13 @@ export default function ChatBox() {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const toggleSqlView = (messageId: string) => {
-    setSqlToggles(prev => ({
+    setSqlToggles((prev) => ({
       ...prev,
-      [messageId]: !prev[messageId]
+      [messageId]: !prev[messageId],
     }));
   };
 
@@ -73,14 +94,14 @@ export default function ChatBox() {
       const validatedFile = validateAndSelectFile(file);
       setSelectedFile(validatedFile);
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Invalid file type');
+      alert(error instanceof Error ? error.message : "Invalid file type");
     }
   };
 
   const clearFileInput = () => {
     setSelectedFile(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
@@ -92,26 +113,34 @@ export default function ChatBox() {
     const imageUrl = URL.createObjectURL(selectedFile);
 
     // Add user message once
-    const userMessage = createUserMessage(selectedPrompt, selectedFile, imageUrl);
+    const userMessage = createUserMessage(
+      selectedPrompt,
+      selectedFile,
+      imageUrl,
+    );
     setMessages((prev) => [...prev, userMessage]);
-    
+
     // Close all dropdowns and clear file immediately
     setIsOpen(false);
     setIsModelOpen(false);
     clearFileInput();
-    
+
     setIsLoading(true);
 
     // Process with all selected models
     for (const model of selectedModels) {
       try {
-        const assistantMessage = await submitChatMessage(model, selectedPrompt, selectedFile);
+        const assistantMessage = await submitChatMessage(
+          model,
+          selectedPrompt,
+          selectedFile,
+        );
         assistantMessage.modelName = model;
         assistantMessage.prompt = selectedPrompt;
         setMessages((prev) => [...prev, assistantMessage]);
       } catch (error) {
         const errorMessage = createErrorMessage(
-          `Error: ${error instanceof Error ? error.message : 'Failed to process request'}`
+          `Error: ${error instanceof Error ? error.message : "Failed to process request"}`,
         );
         errorMessage.modelName = model;
         setMessages((prev) => [...prev, errorMessage]);
@@ -144,7 +173,7 @@ export default function ChatBox() {
         setMessages((prev) => [...prev, assistantMessage]);
       } catch (error) {
         const errorMessage = createErrorMessage(
-          `Error: ${error instanceof Error ? error.message : 'Failed to process request'}`
+          `Error: ${error instanceof Error ? error.message : "Failed to process request"}`,
         );
         errorMessage.modelName = model;
         setMessages((prev) => [...prev, errorMessage]);
@@ -164,13 +193,13 @@ export default function ChatBox() {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
               className={`max-w-[70%] rounded-lg p-4 relative ${
-                message.type === 'user'
-                  ? 'bg-black text-white'
-                  : 'bg-gray-100 text-gray-900'
+                message.type === "user"
+                  ? "bg-black text-white"
+                  : "bg-gray-100 text-gray-900"
               }`}
             >
               {message.sqlContent && (
@@ -191,9 +220,9 @@ export default function ChatBox() {
               )}
               {message.imageUrl && (
                 <div className="mb-3">
-                  <img 
-                    src={message.imageUrl} 
-                    alt={message.file?.name || 'Uploaded image'}
+                  <img
+                    src={message.imageUrl}
+                    alt={message.file?.name || "Uploaded image"}
                     className="rounded-lg max-w-full h-auto max-h-64 object-contain"
                   />
                 </div>
@@ -202,7 +231,9 @@ export default function ChatBox() {
                 <>
                   {message.modelName && (
                     <div className="mb-2 pb-2 border-b border-gray-300">
-                      <span className="font-semibold text-sm">{message.modelName}</span>
+                      <span className="font-semibold text-sm">
+                        {message.modelName}
+                      </span>
                     </div>
                   )}
                   {sqlToggles[message.id] && message.sqlContent ? (
@@ -210,9 +241,14 @@ export default function ChatBox() {
                       <code>{message.sqlContent}</code>
                     </pre>
                   ) : (
-                    <div 
+                    <div
                       className="prose prose-sm max-w-none overflow-x-auto wrap-break-word whitespace-pre-wrap"
-                      dangerouslySetInnerHTML={{ __html: processHtmlContent(message.htmlContent || '', message.prompt) }}
+                      dangerouslySetInnerHTML={{
+                        __html: processHtmlContent(
+                          message.htmlContent || "",
+                          message.prompt,
+                        ),
+                      }}
                     />
                   )}
                 </>
@@ -220,7 +256,9 @@ export default function ChatBox() {
                 <>
                   {message.modelName && (
                     <div className="mb-2 pb-2 border-b border-gray-300">
-                      <span className="font-semibold text-sm">{message.modelName}</span>
+                      <span className="font-semibold text-sm">
+                        {message.modelName}
+                      </span>
                     </div>
                   )}
                   <p className="whitespace-pre-wrap">{message.content}</p>
@@ -250,7 +288,9 @@ export default function ChatBox() {
       {showModelSelector && (
         <div className="mx-4 mb-4 bg-white border border-gray-300 rounded-lg shadow-lg p-4 animate-slide-up">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold text-gray-900">Select Model(s)</h3>
+            <h3 className="text-base font-semibold text-gray-900">
+              Select Model(s)
+            </h3>
             <button
               onClick={() => {
                 setShowModelSelector(false);
@@ -302,7 +342,8 @@ export default function ChatBox() {
               disabled={selectedModels.length === 0}
               className="flex-1 px-3 py-1.5 text-xs bg-black text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
-              Process {selectedModels.length > 0 && `(${selectedModels.length})`}
+              Process{" "}
+              {selectedModels.length > 0 && `(${selectedModels.length})`}
             </button>
           </div>
         </div>
@@ -310,7 +351,10 @@ export default function ChatBox() {
 
       {/* Input Area */}
       <div className="p-4 border-t">
-        <form onSubmit={handleSubmit} className="bg-white border border-gray-300 rounded-lg shadow-sm">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white border border-gray-300 rounded-lg shadow-sm"
+        >
           {selectedFile && (
             <div className="px-4 pt-3 pb-2 border-b border-gray-200">
               <div className="inline-flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded max-w-md">
@@ -353,7 +397,9 @@ export default function ChatBox() {
                         setIsOpen(false);
                       }}
                       className={`w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 transition-colors first:rounded-t-lg last:rounded-b-lg text-sm ${
-                        selectedPrompt === prompt ? "bg-gray-50 text-gray-600" : ""
+                        selectedPrompt === prompt
+                          ? "bg-gray-50 text-gray-600"
+                          : ""
                       }`}
                     >
                       {prompt}
@@ -376,7 +422,7 @@ export default function ChatBox() {
               <input
                 id="pdf-upload"
                 type="file"
-                accept={VALID_FILE_TYPES.join(',')}
+                accept={VALID_FILE_TYPES.join(",")}
                 onChange={handleFileChange}
                 ref={fileInputRef}
                 className="hidden"
@@ -393,7 +439,11 @@ export default function ChatBox() {
                 onClick={() => setIsModelOpen(!isModelOpen)}
                 className="flex items-center gap-2 px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm border border-gray-200"
               >
-                <span>{selectedModels.length === 0 ? 'Select Model(s)' : `${selectedModels.length} Model${selectedModels.length > 1 ? 's' : ''}`}</span>
+                <span>
+                  {selectedModels.length === 0
+                    ? "Select Model(s)"
+                    : `${selectedModels.length} Model${selectedModels.length > 1 ? "s" : ""}`}
+                </span>
                 <ChevronUp
                   className={`w-4 h-4 transition-transform ${
                     isModelOpen ? "rotate-180" : ""
@@ -404,7 +454,9 @@ export default function ChatBox() {
               {isModelOpen && (
                 <div className="absolute bottom-full mb-2 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-64">
                   <div className="p-2 border-b border-gray-200 flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-700">Select Model(s)</span>
+                    <span className="text-xs font-medium text-gray-700">
+                      Select Model(s)
+                    </span>
                     <div className="flex gap-1">
                       <button
                         type="button"
@@ -451,7 +503,10 @@ export default function ChatBox() {
           </div>
         </form>
       </div>
-      <p className="text-center text-xs text-gray-500">That AI might take a bit long time to process and generate a response, while it run on local machine by Ollama!!!</p>
+      <p className="text-center text-xs text-gray-500">
+        That AI might take a bit long time to process and generate a response,
+        while it run on local machine by Ollama!!!
+      </p>
     </div>
   );
 }

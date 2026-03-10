@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   title: "AI Documentation",
   description: "AI-powered documentation and OCR tool",
   icons: {
-    icon: '/vercel.svg',
+    icon: "/vercel.svg",
   },
 };
 

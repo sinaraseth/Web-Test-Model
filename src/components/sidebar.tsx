@@ -43,7 +43,9 @@ export default function Sidebar() {
               title="New Chat"
             >
               <SquareArrowOutUpRight className="w-5 h-5 shrink-0 min-w-5" />
-              {!isMinimized && <span className="ml-3 whitespace-nowrap">New Chat</span>}
+              {!isMinimized && (
+                <span className="ml-3 whitespace-nowrap">New Chat</span>
+              )}
             </a>
           </li>
           <li>
@@ -53,7 +55,9 @@ export default function Sidebar() {
               title="Search Chat"
             >
               <FolderSearch className="w-5 h-5 shrink-0 min-w-5" />
-              {!isMinimized && <span className="ml-3 whitespace-nowrap">Search Chat</span>}
+              {!isMinimized && (
+                <span className="ml-3 whitespace-nowrap">Search Chat</span>
+              )}
             </a>
           </li>
         </ul>
