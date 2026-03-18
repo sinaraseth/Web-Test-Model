@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { SidebarProvider, useSidebar } from "../contexts/sidebarContext";
 import { ModelProvider } from "../contexts/modelContext";
 import Sidebar from "./sidebar";
@@ -27,6 +28,13 @@ function LayoutContent({ children }: { children: ReactNode }) {
 }
 
 export default function LayoutWrapper({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isAuthRoute = pathname.startsWith("/auth");
+
+  if (isAuthRoute) {
+    return <>{children}</>;
+  }
+
   return (
     <SidebarProvider>
       <ModelProvider>
